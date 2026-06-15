@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRONOS — TIMER</title>
+<style>
+  :root{
+    --bg: #0a0a0a;
+    --fg: #f5f5f0;
+    --accent: #ffe600;
+    --accent-2: #ff3b1f;
+    --line: #f5f5f0;
+    --dim: #6b6b66;
+    --font-display: 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'Courier New', monospace;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html,body{
+    height:100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-display);
+    overflow-x:hidden;
+  }
+
+  .app{
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom: 4px solid var(--line);
+    padding: 18px clamp(16px, 4vw, 48px);
+  }
+  .logo{
+    font-size: clamp(18px, 3vw, 28px);
+    font-weight:900;
+    letter-spacing:-0.02em;
+    text-transform:uppercase;
+  }
+  .logo span{ color: var(--accent); }
+
+  .mode-switch{
+    display:flex;
+    border: 4px solid var(--line);
+  }
+  .mode-switch button{
+    font-family:inherit;
+    font-size: clamp(12px, 1.6vw, 16px);
+    font-weight:800;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color: var(--fg);
+    background: transparent;
+    border:none;
+    padding: 12px clamp(16px, 3vw, 32px);
+    cursor:pointer;
+    transition: background .1s, color .1s;
+  }
+  .mode-switch button + button{
+    border-left: 4px solid var(--line);
+  }
+  .mode-switch button.active{
+    background: var(--accent);
+    color: #0a0a0a;
+  }
+  .mode-switch button:not(.active):hover{
+    background: rgba(245,245,240,0.08);
+  }
+
+  .display{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding: 24px 16px;
+    border-bottom: 4px solid var(--line);
+    position:relative;
+  }
+
+  .display-label{
+    position:absolute;
+    top: 24px;
+    left: clamp(16px, 4vw, 48px);
+    font-size: clamp(11px, 1.4vw, 14px);
+    font-weight:800;
+    letter-spacing:0.3em;
+    text-transform:uppercase;
+    color: var(--dim);
+  }
+
+  .status-tag{
+    position:absolute;
+    top: 24px;
+    right: clamp(16px, 4vw, 48px);
+    font-size: clamp(11px, 1.4vw, 14px);
+    font-weight:800;
+    letter-spacing:0.3em;
+    text-transform:uppercase;
+    color: var(--dim);
+    min-height:1.2em;
+  }
+  .status-tag.live{ color: var(--accent-2); }
+  .status-tag.done{ color: var(--accent); }
+
+  .clock{
+    font-family: var(--font-display);
+    font-weight:900;
+    font-size: clamp(72px, 22vw, 280px);
+    line-height:0.95;
+    letter-spacing:-0.04em;
+    font-variant-numeric: tabular-nums;
+    user-select:none;
+    display:flex;
+    align-items:baseline;
+  }
+
+  .clock .colon{
+    margin: 0 clamp(2px, 0.8vw, 12px);
+    animation: blink 1s steps(1) infinite;
+  }
+  .clock.paused .colon, .clock.idle .colon{ animation:none; opacity:0.25; }
+
+  @keyframes blink{
+    0%, 49%{ opacity:1; }
+    50%, 100%{ opacity:0.15; }
+  }
+
+  .ms{
+    font-size: clamp(28px, 6vw, 64px);
+    font-weight:900;
+    color: var(--dim);
+    align-self:flex-start;
+    margin-top: clamp(14px, 4vw, 36px);
+    margin-left: clamp(8px, 1.5vw, 16px);
+    min-width: 2.2ch;
+    text-align:left;
+  }
+  .ms.hidden{ display:none; }
+
+  .progress-track{
+    width:100%;
+    height: clamp(8px, 1.6vw, 16px);
+    background: transparent;
+    border-top: 4px solid var(--line);
+    margin-top: clamp(24px, 5vw, 56px);
+    position:relative;
+    overflow:hidden;
+  }
+  .progress-track.hidden{ display:none; }
+  .progress-fill{
+    height:100%;
+    width:0%;
+    background: var(--accent);
+    transition: width .2s linear, background .2s ease;
+  }
+  .progress-fill.warn{ background: var(--accent-2); }
+
+  .timer-setup{
+    display:flex;
+    border-bottom: 4px solid var(--line);
+  }
+  .timer-setup.hidden{ display:none; }
+
+  .field{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 20px 8px;
+    border-right: 4px solid var(--line);
+  }
+  .field:last-child{ border-right:none; }
+
+  .field label{
+    font-size: clamp(10px, 1.3vw, 13px);
+    font-weight:800;
+    letter-spacing:0.3em;
+    text-transform:uppercase;
+    color: var(--dim);
+    margin-bottom:12px;
+  }
+
+  .stepper{
+    display:flex;
+    align-items:center;
+    gap: clamp(8px, 2vw, 24px);
+  }
+  .stepper button{
+    width: clamp(36px, 6vw, 52px);
+    height: clamp(36px, 6vw, 52px);
+    border: 4px solid var(--line);
+    background: transparent;
+    color: var(--fg);
+    font-size: clamp(20px, 3vw, 28px);
+    font-weight:900;
+    cursor:pointer;
+    transition: background .1s, color .1s;
+    line-height:1;
+  }
+  .stepper button:hover{
+    background: var(--accent);
+    color: #0a0a0a;
+    border-color: var(--accent);
+  }
+  .stepper input{
+    width: clamp(64px, 10vw, 110px);
+    text-align:center;
+    background:transparent;
+    border:none;
+    color: var(--fg);
+    font-family: var(--font-display);
+    font-size: clamp(32px, 6vw, 64px);
+    font-weight:900;
+    font-variant-numeric: tabular-nums;
+    -webkit-appearance:none;
+  }
+  .stepper input:focus{ outline:none; }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+
+  .presets{
+    display:flex;
+    flex-wrap:wrap;
+    border-bottom: 4px solid var(--line);
+  }
+  .presets.hidden{ display:none; }
+  .preset-btn{
+    flex:1;
+    min-width: 90px;
+    font-family:inherit;
+    font-size: clamp(13px, 1.8vw, 18px);
+    font-weight:800;
+    letter-spacing:0.05em;
+    color: var(--fg);
+    background: transparent;
+    border:none;
+    border-right: 4px solid var(--line);
+    padding: 16px 8px;
+    cursor:pointer;
+    transition: background .1s, color .1s;
+  }
+  .preset-btn:last-child{ border-right:none; }
+  .preset-btn:hover{
+    background: var(--fg);
+    color: #0a0a0a;
+  }
+
+  .controls{
+    display:flex;
+  }
+  .ctrl-btn{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 12px;
+    font-family:inherit;
+    font-size: clamp(14px, 2vw, 20px);
+    font-weight:900;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    color: var(--fg);
+    background: transparent;
+    border:none;
+    border-right: 4px solid var(--line);
+    padding: clamp(20px, 4vw, 40px) 8px;
+    cursor:pointer;
+    transition: background .1s, color .1s;
+  }
+  .ctrl-btn:last-child{ border-right:none; }
+  .ctrl-btn svg{ width: clamp(18px, 2.4vw, 26px); height: clamp(18px, 2.4vw, 26px); }
+
+  .ctrl-btn:hover{
+    background: rgba(245,245,240,0.08);
+  }
+
+  .ctrl-btn.primary{
+    background: var(--accent);
+    color: #0a0a0a;
+    flex: 2;
+  }
+  .ctrl-btn.primary:hover{
+    background: var(--fg);
+  }
+  .ctrl-btn.primary.running{
+    background: var(--accent-2);
+    color: var(--fg);
+  }
+  .ctrl-btn.primary.running:hover{
+    background: #ff6347;
+  }
+
+  .ctrl-btn.disabled{
+    opacity:0.2;
+    pointer-events:none;
+  }
+
+  .laps{
+    max-height: 40vh;
+    overflow-y:auto;
+    border-bottom: 4px solid var(--line);
+  }
+  .laps.hidden{ display:none; }
+  .laps::-webkit-scrollbar{ width:10px; }
+  .laps::-webkit-scrollbar-thumb{ background: var(--accent); }
+  .laps::-webkit-scrollbar-track{ background: var(--bg); border-left:4px solid var(--line); }
+
+  .lap-row{
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items:center;
+    padding: 14px clamp(16px, 4vw, 48px);
+    border-bottom: 4px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: clamp(14px, 2vw, 22px);
+    font-weight:700;
+  }
+  .lap-row:last-child{ border-bottom:none; }
+
+  .lap-row .lap-index{
+    font-family: var(--font-display);
+    font-weight:800;
+    letter-spacing:0.2em;
+    font-size: clamp(11px, 1.4vw, 14px);
+    text-transform:uppercase;
+    color: var(--dim);
+  }
+  .lap-row .lap-diff{ text-align:center; color: var(--dim); }
+  .lap-row .lap-time{ text-align:right; }
+  .lap-row.fastest .lap-time{ color: var(--accent); }
+  .lap-row.slowest .lap-time{ color: var(--accent-2); }
+
+  footer{
+    padding: 16px clamp(16px, 4vw, 48px);
+    font-size: clamp(10px, 1.2vw, 12px);
+    font-weight:800;
+    letter-spacing:0.3em;
+    text-transform:uppercase;
+    color: var(--dim);
+    display:flex;
+    justify-content:space-between;
+  }
+
+  .hidden{ display:none !important; }
+
+  @media (max-width: 640px){
+    .timer-setup{ flex-direction:column; }
+    .field{ border-right:none; border-bottom:4px solid var(--line); }
+    .field:last-child{ border-bottom:none; }
+    .presets{ flex-direction:column; }
+    .preset-btn{ border-right:none; border-bottom:4px solid var(--line); }
+    .preset-btn:last-child{ border-bottom:none; }
+    .controls{ flex-direction:column; }
+    .ctrl-btn{ border-right:none; border-bottom:4px solid var(--line); }
+    .ctrl-btn:last-child{ border-bottom:none; }
+    .ctrl-btn.primary{ order:-1; }
+    .lap-row{ grid-template-columns: 1fr 1fr; }
+    .lap-row .lap-diff{ display:none; }
+    footer{ flex-direction:column; gap:6px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .clock .colon{ animation:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+
+    <div class="topbar">
+      <div class="logo">CRON<span>O</span>S</div>
+      <div class="mode-switch" role="tablist" aria-label="Modo">
+        <button class="active" data-mode="timer" role="tab" aria-selected="true">Timer</button>
+        <button data-mode="stopwatch" role="tab" aria-selected="false">Cronómetro</button>
+      </div>
+    </div>
+
+    <div class="display">
+      <div class="display-label" id="displayLabel">Cuenta atrás</div>
+      <div class="status-tag" id="statusTag"></div>
+
+      <div class="clock idle" id="clock">
+        <div id="digits"></div>
+        <div class="ms hidden" id="ms">00</div>
+      </div>
+    </div>
+
+    <div class="progress-track" id="progressTrack">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <div class="timer-setup" id="timerSetup">
+      <div class="field">
+        <label>Horas</label>
+        <div class="stepper">
+          <button data-target="hours" data-delta="-1" aria-label="Disminuir horas">−</button>
+          <input id="hoursInput" type="number" min="0" max="23" value="0" inputmode="numeric">
+          <button data-target="hours" data-delta="1" aria-label="Aumentar horas">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Minutos</label>
+        <div class="stepper">
+          <button data-target="minutes" data-delta="-1" aria-label="Disminuir minutos">−</button>
+          <input id="minutesInput" type="number" min="0" max="59" value="5" inputmode="numeric">
+          <button data-target="minutes" data-delta="1" aria-label="Aumentar minutos">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Segundos</label>
+        <div class="stepper">
+          <button data-target="seconds" data-delta="-1" aria-label="Disminuir segundos">−</button>
+          <input id="secondsInput" type="number" min="0" max="59" value="0" inputmode="numeric">
+          <button data-target="seconds" data-delta="1" aria-label="Aumentar segundos">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="presets" id="presets">
+      <button class="preset-btn" data-preset="60">1 MIN</button>
+      <button class="preset-btn" data-preset="300">5 MIN</button>
+      <button class="preset-btn" data-preset="600">10 MIN</button>
+      <button class="preset-btn" data-preset="900">15 MIN</button>
+      <button class="preset-btn" data-preset="1500">25 MIN</button>
+      <button class="preset-btn" data-preset="3600">1 HORA</button>
+    </div>
+
+    <div class="laps hidden" id="laps"></div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="resetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4L2 9"/><path d="M2 4v5h5"/></svg>
+        Reiniciar
+      </button>
+      <button class="ctrl-btn primary" id="playBtn">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <span id="playLabel">Iniciar</span>
+      </button>
+      <button class="ctrl-btn disabled" id="lapBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="19"/><line x1="5" y1="12" x2="2" y2="12"/><line x1="22" y1="12" x2="19" y2="12"/><circle cx="12" cy="12" r="7"/></svg>
+        Vuelta
+      </button>
+    </div>
+
+    <footer>
+      <span>ESPACIO · INICIAR/PAUSAR</span>
+      <span>R · REINICIAR</span>
+      <span>L · VUELTA</span>
+    </footer>
+  </div>
+
+<script>
+(() => {
+  const modeButtons = document.querySelectorAll('.mode-switch button');
+  const digits = document.getElementById('digits');
+  const msEl = document.getElementById('ms');
+  const clockEl = document.getElementById('clock');
+  const displayLabel = document.getElementById('displayLabel');
+  const statusTag = document.getElementById('statusTag');
+  const timerSetup = document.getElementById('timerSetup');
+  const presets = document.getElementById('presets');
+  const progressTrack = document.getElementById('progressTrack');
+  const progressFill = document.getElementById('progressFill');
+  const lapsEl = document.getElementById('laps');
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = document.getElementById('playIcon');
+  const playLabel = document.getElementById('playLabel');
+  const resetBtn = document.getElementById('resetBtn');
+  const lapBtn = document.getElementById('lapBtn');
+
+  const hoursInput = document.getElementById('hoursInput');
+  const minutesInput = document.getElementById('minutesInput');
+  const secondsInput = document.getElementById('secondsInput');
+
+  const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+  const ICON_PAUSE = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>';
+
+  let mode = 'timer';
+  let running = false;
+  let rafId = null;
+
+  let swElapsed = 0;
+  let swStart = 0;
+  let laps = [];
+
+  let timerTotal = 5 * 60 * 1000;
+  let timerRemaining = timerTotal;
+  let timerStart = 0;
+  let timerRemainingAtStart = 0;
+
+  function pad(n, len=2){ return String(n).padStart(len, '0'); }
+
+  function buildDigits(str){
+    digits.innerHTML = '';
+    for(const ch of str){
+      const span = document.createElement('span');
+      if(ch === ':'){
+        span.className = 'colon';
+      }
+      span.textContent = ch;
+      digits.appendChild(span);
+    }
+  }
+
+  function formatHMS(totalMs){
+    const totalSec = Math.max(0, Math.floor(totalMs/1000));
+    const h = Math.floor(totalSec/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const s = totalSec%60;
+    if(h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    return `${pad(m)}:${pad(s)}`;
+  }
+
+  function switchMode(newMode){
+    if(running){ stop(true); }
+    mode = newMode;
+    modeButtons.forEach(b => {
+      const active = b.dataset.mode === mode;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active);
+    });
+
+    statusTag.className = 'status-tag';
+    statusTag.textContent = '';
+
+    if(mode === 'timer'){
+      displayLabel.textContent = 'Cuenta atrás';
+      timerSetup.classList.remove('hidden');
+      presets.classList.remove('hidden');
+      progressTrack.classList.remove('hidden');
+      lapsEl.classList.add('hidden');
+      msEl.classList.add('hidden');
+      lapBtn.classList.add('disabled');
+      resetTimerFromInputs();
+    } else {
+      displayLabel.textContent = 'Cronómetro';
+      timerSetup.classList.add('hidden');
+      presets.classList.add('hidden');
+      progressTrack.classList.add('hidden');
+      lapsEl.classList.remove('hidden');
+      msEl.classList.remove('hidden');
+      lapBtn.classList.remove('disabled');
+      swElapsed = 0;
+      laps = [];
+      renderLaps();
+      renderStopwatch();
+    }
+    setPlayUI(false);
+    clockEl.classList.remove('paused');
+    clockEl.classList.add('idle');
+  }
+
+  modeButtons.forEach(btn => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
+
+  function clampInputs(){
+    let h = parseInt(hoursInput.value || '0', 10);
+    let m = parseInt(minutesInput.value || '0', 10);
+    let s = parseInt(secondsInput.value || '0', 10);
+    h = Math.min(Math.max(h, 0), 23);
+    m = Math.min(Math.max(m, 0), 59);
+    s = Math.min(Math.max(s, 0), 59);
+    hoursInput.value = h;
+    minutesInput.value = m;
+    secondsInput.value = s;
+    return (h*3600 + m*60 + s) * 1000;
+  }
+
+  function resetTimerFromInputs(){
+    timerTotal = clampInputs();
+    timerRemaining = timerTotal;
+    progressFill.style.width = '0%';
+    progressFill.classList.remove('warn');
+    statusTag.className = 'status-tag';
+    statusTag.textContent = '';
+    document.title = 'CRONOS — TIMER';
+    renderTimer();
+  }
+
+  function renderTimer(){
+    buildDigits(formatHMS(timerRemaining));
+    if(timerTotal > 0){
+      const pct = ((timerTotal - timerRemaining) / timerTotal) * 100;
+      progressFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+      progressFill.classList.toggle('warn', timerRemaining <= 10000 && timerRemaining > 0);
+    } else {
+      progressFill.style.width = '0%';
+    }
+  }
+
+  function tickTimer(){
+    const now = performance.now();
+    const elapsedSinceStart = now - timerStart;
+    timerRemaining = Math.max(0, timerRemainingAtStart - elapsedSinceStart);
+    renderTimer();
+
+    if(timerRemaining <= 0){
+      finishTimer();
+      return;
+    }
+    rafId = requestAnimationFrame(tickTimer);
+  }
+
+  function finishTimer(){
+    running = false;
+    setPlayUI(false);
+    clockEl.classList.add('paused');
+    statusTag.className = 'status-tag done';
+    statusTag.textContent = '¡Listo!';
+    progressFill.classList.add('warn');
+    progressFill.style.width = '100%';
+    document.title = '¡TIEMPO! — CRONOS';
+    timerSetup.querySelectorAll('input').forEach(i => i.disabled = false);
+    presets.querySelectorAll('button').forEach(b => b.disabled = false);
+    flashScreen();
+  }
+
+  function flashScreen(){
+    let count = 0;
+    const interval = setInterval(() => {
+      clockEl.style.opacity = clockEl.style.opacity === '0.15' ? '1' : '0.15';
+      count++;
+      if(count >= 6){
+        clearInterval(interval);
+        clockEl.style.opacity = '1';
+      }
+    }, 220);
+  }
+
+  function renderStopwatch(elapsedOverride){
+    const elapsed = elapsedOverride !== undefined ? elapsedOverride : swElapsed;
+    const totalSec = elapsed/1000;
+    const h = Math.floor(totalSec/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const s = Math.floor(totalSec%60);
+    const ms = Math.floor((elapsed%1000)/10);
+
+    if(h > 0){
+      buildDigits(`${pad(h)}:${pad(m)}:${pad(s)}`);
+    } else {
+      buildDigits(`${pad(m)}:${pad(s)}`);
+    }
+    msEl.textContent = pad(ms);
+  }
+
+  function tickStopwatch(){
+    const now = performance.now();
+    swElapsed = now - swStart;
+    renderStopwatch();
+    rafId = requestAnimationFrame(tickStopwatch);
+  }
+
+  function renderLaps(){
+    lapsEl.innerHTML = '';
+    if(laps.length === 0) return;
+
+    let fastestIdx = -1, slowestIdx = -1;
+    if(laps.length > 1){
+      let minDiff = Infinity, maxDiff = -Infinity;
+      laps.forEach((l, i) => {
+        if(l.diff < minDiff){ minDiff = l.diff; fastestIdx = i; }
+        if(l.diff > maxDiff){ maxDiff = l.diff; slowestIdx = i; }
+      });
+    }
+
+    laps.forEach((lap, i) => {
+      const row = document.createElement('div');
+      row.className = 'lap-row';
+      if(i === fastestIdx) row.classList.add('fastest');
+      if(i === slowestIdx) row.classList.add('slowest');
+
+      const idxEl = document.createElement('span');
+      idxEl.className = 'lap-index';
+      idxEl.textContent = `Vuelta ${laps.length - i}`;
+
+      const diffEl = document.createElement('span');
+      diffEl.className = 'lap-diff';
+      diffEl.textContent = `+${formatLapTime(lap.diff)}`;
+
+      const timeEl = document.createElement('span');
+      timeEl.className = 'lap-time';
+      timeEl.textContent = formatLapTime(lap.total);
+
+      row.appendChild(idxEl);
+      row.appendChild(diffEl);
+      row.appendChild(timeEl);
+      lapsEl.appendChild(row);
+    });
+  }
+
+  function formatLapTime(ms){
+    const totalSec = ms/1000;
+    const m = Math.floor(totalSec/60);
+    const s = Math.floor(totalSec%60);
+    const cs = Math.floor((ms%1000)/10);
+    return `${pad(m)}:${pad(s)}.${pad(cs)}`;
+  }
+
+  function setPlayUI(isRunning){
+    playIcon.innerHTML = isRunning ? ICON_PAUSE : ICON_PLAY;
+    playLabel.textContent = isRunning ? 'Pausar' : 'Iniciar';
+    playBtn.classList.toggle('running', isRunning);
+  }
+
+  function start(){
+    if(mode === 'timer'){
+      if(timerRemaining <= 0){
+        resetTimerFromInputs();
+        if(timerTotal <= 0) return;
+        timerRemaining = timerTotal;
+      }
+      timerRemainingAtStart = timerRemaining;
+      timerStart = performance.now();
+      running = true;
+      setPlayUI(true);
+      clockEl.classList.remove('idle','paused');
+      statusTag.className = 'status-tag live';
+      statusTag.textContent = 'En curso';
+      document.title = 'CRONOS — TIMER';
+      timerSetup.querySelectorAll('input').forEach(i => i.disabled = true);
+      presets.querySelectorAll('button').forEach(b => b.disabled = true);
+      rafId = requestAnimationFrame(tickTimer);
+    } else {
+      swStart = performance.now() - swElapsed;
+      running = true;
+      setPlayUI(true);
+      clockEl.classList.remove('idle','paused');
+      statusTag.className = 'status-tag live';
+      statusTag.textContent = 'En curso';
+      rafId = requestAnimationFrame(tickStopwatch);
+    }
+  }
+
+  function pause(){
+    running = false;
+    cancelAnimationFrame(rafId);
+    setPlayUI(false);
+    clockEl.classList.add('paused');
+    statusTag.className = 'status-tag';
+    statusTag.textContent = 'Pausado';
+    if(mode === 'timer'){
+      timerSetup.querySelectorAll('input').forEach(i => i.disabled = false);
+      presets.querySelectorAll('button').forEach(b => b.disabled = false);
+    }
+  }
+
+  function stop(silent){
+    running = false;
+    cancelAnimationFrame(rafId);
+    if(!silent) setPlayUI(false);
+  }
+
+  function reset(){
+    stop(true);
+    if(mode === 'timer'){
+      timerSetup.querySelectorAll('input').forEach(i => i.disabled = false);
+      presets.querySelectorAll('button').forEach(b => b.disabled = false);
+      resetTimerFromInputs();
+    } else {
+      swElapsed = 0;
+      laps = [];
+      renderLaps();
+      renderStopwatch();
+      statusTag.className = 'status-tag';
+      statusTag.textContent = '';
+    }
+    setPlayUI(false);
+    clockEl.classList.remove('paused');
+    clockEl.classList.add('idle');
+  }
+
+  playBtn.addEventListener('click', () => running ? pause() : start());
+  resetBtn.addEventListener('click', reset);
+
+  lapBtn.addEventListener('click', () => {
+    if(mode !== 'stopwatch' || !running) return;
+    const total = swElapsed;
+    const prevTotal = laps.length > 0 ? laps[0].total : 0;
+    const diff = total - prevTotal;
+    laps.unshift({ total, diff });
+    renderLaps();
+  });
+
+  document.querySelectorAll('.stepper button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(running) return;
+      const target = btn.dataset.target;
+      const delta = parseInt(btn.dataset.delta, 10);
+      const input = document.getElementById(target + 'Input');
+      let val = parseInt(input.value || '0', 10) + delta;
+      const max = target === 'hours' ? 23 : 59;
+      if(val < 0) val = max;
+      if(val > max) val = 0;
+      input.value = val;
+      resetTimerFromInputs();
+    });
+  });
+
+  [hoursInput, minutesInput, secondsInput].forEach(input => {
+    input.addEventListener('change', () => {
+      if(running) return;
+      resetTimerFromInputs();
+    });
+  });
+
+  presets.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(running) return;
+      const totalSec = parseInt(btn.dataset.preset, 10);
+      hoursInput.value = Math.floor(totalSec/3600);
+      minutesInput.value = Math.floor((totalSec%3600)/60);
+      secondsInput.value = totalSec%60;
+      resetTimerFromInputs();
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if(e.target.tagName === 'INPUT') return;
+    if(e.code === 'Space'){
+      e.preventDefault();
+      playBtn.click();
+    } else if(e.key.toLowerCase() === 'r'){
+      reset();
+    } else if(e.key.toLowerCase() === 'l'){
+      lapBtn.click();
+    }
+  });
+
+  resetTimerFromInputs();
+})();
+</script>
+</body>
+</html>
